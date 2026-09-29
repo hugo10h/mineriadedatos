@@ -46,7 +46,7 @@ df = (spark_session.read
 
 
 print("Datos sin tratar:")
-escribir_tabla(df, "Datos2024", url_bd, propiedades_bd)
+
 
 
 ################################
@@ -285,3 +285,21 @@ print(
 )
 
 print("Referencia: https://valenciaplaza.com/valenciaplaza/grifols-un-ano-despues-cotizacion-sigue-34-por-debajo-tras-gotham-opa-brookfield")
+
+
+
+
+
+# --- Almacenamiento en base de datos ---
+
+#SIN TRATAR
+df_bruto = (spark_session.read
+            .option("header", True)
+            .option("sep", ";")
+            .csv(path))
+
+escribir_tabla(df_bruto, "Datos2024", url_bd, propiedades_bd, modo="overwrite")
+
+#TRATADOS
+df_tratado = df.select("Dia", *empresas)
+escribir_tabla(df_tratado, "Datos2024", url_bd, propiedades_bd, modo="overwrite")
