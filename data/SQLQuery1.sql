@@ -1,0 +1,12 @@
+CREATE DATABASE IBEX35;
+GO
+
+CREATE LOGIN spark_user WITH PASSWORD = 'Ibex35Pass1!';
+GO
+
+USE IBEX35;
+GO
+
+CREATE USER spark_user FOR LOGIN spark_user;
+ALTER ROLE db_owner ADD MEMBER spark_user;
+GO
