@@ -1,0 +1,17 @@
+﻿# Data lake generado (se regenera con main.py)
+data/lake/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+
+# Spark / Delta locales
+metastore_db/
+spark-warehouse/
+derby.log
+
+# IDE
+.idea/
+.vscode/
