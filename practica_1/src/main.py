@@ -1,10 +1,46 @@
-import os
-import shutil
-from datetime import date
+'''
+DECLARACIÓN DE USO DE IA
+
+Me he ayduado de la herramienta de IA Claude Sonnet 5.5 para la realización de las prácticas.
+He aportado mi idea principal con el funcionamiento de la misma y la IA me ha ayudado a mejorarlas e implementarlas,
+y en el peor de los casos a corregirlas y explicarlas.
+
+'''
 
 import os
 import shutil
 from datetime import date
+
+#dado por gemini para comprobar si funciona
+# Ruta del archivo main.py (.../practica_1/src/main.py)
+src_dir = os.path.dirname(os.path.abspath(__file__))
+# Ruta raíz del módulo practica_1 (.../practica_1)
+practica_dir = os.path.dirname(src_dir)
+# Ruta del directorio superior MD (.../MD)
+root_md_dir = os.path.dirname(practica_dir)
+
+# Configurar HADOOP_HOME apuntando a practica_1
+os.environ["HADOOP_HOME"] = practica_dir
+os.environ["hadoop.home.dir"] = practica_dir
+
+# Crear carpeta bin dentro de practica_1 si no existe
+bin_dir = os.path.join(practica_dir, "bin")
+os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+
+if not os.path.exists(bin_dir):
+    os.makedirs(bin_dir)
+
+# Buscar winutils.exe tanto en MD/ como en practica_1/ para copiarlo automáticamente a bin/
+winutils_root = os.path.join(root_md_dir, "winutils.exe")
+winutils_prac = os.path.join(practica_dir, "winutils.exe")
+winutils_dst = os.path.join(bin_dir, "winutils.exe")
+
+if not os.path.exists(winutils_dst):
+    if os.path.exists(winutils_root):
+        shutil.copy(winutils_root, winutils_dst)
+    elif os.path.exists(winutils_prac):
+        shutil.copy(winutils_prac, winutils_dst)
+
 
 from spark_session import crear_spark_session
 from db_connection import obtener_url_conexion, obtener_propiedades_conexion, escribir_tabla, leer_tabla
@@ -12,14 +48,28 @@ from ingesta import descargar_historico, descargar_ibex
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
 from delta.tables import DeltaTable
-from pyspark.sql.windows import Window
+from pyspark.sql.window import Window
+import yfinance as yf
+
 
 # Rutas RELATIVAS al proyecto
 proyecto_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUTA_LAKE = os.path.join(proyecto_dir, "data", "lake")
+CSV_SENTIMIENTO = os.path.join(proyecto_dir, "data", "sentimiento_ibex.csv").replace("\\", "/")
 RUTA_BRONZE_IBEX = os.path.join(RUTA_LAKE, "bronze", "ibex").replace("\\", "/")
 RUTA_BRONZE_SENT = os.path.join(RUTA_LAKE, "bronze", "sentimiento").replace("\\", "/")
-RUTA_CSV_SENT = os.path.join(proyecto_dir, "data", "sentimiento_ibex.csv")
+RUTA_BRONZE_EMP = os.path.join(RUTA_LAKE, "bronze", "empresas").replace("\\", "/")
+
+RUTA_SILVER_SENT = os.path.join(RUTA_LAKE, "silver", "sentimiento").replace("\\", "/")
+RUTA_SILVER_IBEX = os.path.join(RUTA_LAKE, "silver", "ibex").replace("\\", "/")
+RUTA_SILVER_EMP = os.path.join(RUTA_LAKE, "silver", "empresas").replace("\\", "/")
+
+RUTA_GOLD = os.path.join(RUTA_LAKE, "gold").replace("\\", "/")
+RUTA_GOLD_FACT = os.path.join(RUTA_GOLD, "fact_cotizaciones").replace("\\", "/")
+RUTA_GOLD_DIM_EMP = os.path.join(RUTA_GOLD, "dim_empresas").replace("\\", "/")
+RUTA_GOLD_DIM_SENT = os.path.join(RUTA_GOLD, "dim_sentimiento").replace("\\", "/")
+RUTA_GOLD_DIM_FECHA = os.path.join(RUTA_GOLD, "dim_fecha").replace("\\", "/")
+RUTA_EXPORT_GOLD = os.path.join(proyecto_dir, "data", "export", "gold").replace("\\", "/")
 
 # Para poder repetir el programa desde cero: borra el lake de la ejecución anterior
 if os.path.exists(RUTA_LAKE):
@@ -106,7 +156,7 @@ print("Ej2-a")
 el csv. Observa y comenta que todas las columnas llegan como texto (un CSV no
 guarda los tipos)'''
 
-df_sent = (spark_session.read.option("header", True).option("sep", ";").option("encoding", "UTF-8").csv(RUTA_CSV_SENT))
+df_sent = (spark_session.read.option("header", True).option("sep", ";").option("encoding", "UTF-8").csv(CSV_SENTIMIENTO))
 df_sent.printSchema()
 df_sent.show(5)
 #DECLARACIÓN USO DE IA --> Pedido a Claude (comentar)
@@ -163,8 +213,8 @@ Convierte las carpetas de bronze (ibex y sentimiento), que ahora son Parquet,
 en tablas Delta, sin reescribir los datos. Muestra el historial y comenta qué ha
 aparecido en la carpeta (_delta_log).
 '''
-DeltaTable.convertToDelta(spark_session, f"parquet.'{RUTA_BRONZE_IBEX}'")
-DeltaTable.convertToDelta(spark_session, f"parquet.'{RUTA_BRONZE_SENT}'")
+DeltaTable.convertToDelta(spark_session, f"parquet.`{RUTA_BRONZE_IBEX}`")
+DeltaTable.convertToDelta(spark_session, f"parquet.`{RUTA_BRONZE_SENT}`")
 
 dt_ibex = DeltaTable.forPath(spark_session, RUTA_BRONZE_IBEX)
 dt_ibex.history().show(truncate = False)
@@ -185,9 +235,10 @@ o Ejecútalo una segunda vez y comprueba que pasa.
 
 #guardo la version acutal antes de los cambios para el time travel
 v_antes = dt_ibex.history(1).select("version").collect()[0][0]
+print("Versión actual de bronze/ibex antes del MERGE:", v_antes)
 
 hoy = date.today().strftime("%Y-%m-%d")
-df_ibex_nuevo = descargar_ibex(spark_session. TICKERS_IBEX. FECHA_INICIO, hoy)
+df_ibex_nuevo = descargar_ibex(spark_session, TICKERS_IBEX, FECHA_INICIO, hoy).dropDuplicates(["Ticker", "Fecha"])
 
 def ejecutar_merge():
     #realizo la insercion o actualizacion basada en Ticker
@@ -235,6 +286,10 @@ print("Ej5-b")
 Ej5b: Repite la escritura del ejercicio anterior con option("mergeSchema", "true") y
 comprueba si sigue rechazándolo.
 '''
+
+df_con_columna.write.format("delta").mode("append").option("mergeSchema", "true").save(RUTA_BRONZE_IBEX)
+print("Columnas tras mergeSchema:", spark_session.read.format("delta").load(RUTA_BRONZE_IBEX).columns)
+
 # Muestro historial y leer con time travel
 dt_ibex.history().select("version", "operation", "operationParameters").show(truncate=False)
 
@@ -305,15 +360,30 @@ información del experto en los datos que puedes obtener de yahoo finance.
 pdf
 '''
 
+ESQUEMA_EMPRESAS = StructType([
+    StructField("Ticker", StringType(), False),
+    StructField("Sector", StringType(), True),
+    StructField("Industria", StringType(), True),
+    StructField("Nombre", StringType(), True),
+    StructField("Capitalizacion", DoubleType(), True),
+    StructField("Beta", DoubleType(), True),
+])
+
 def obtener_sectores_yahoo(tickers):
     datos = []
     for t in tickers:
         try:
             info = yf.Ticker(t).info
-            sector_en = info.get("sector", "Desconocido")
-            datos.append((t, sector_en))
+            cap = info.get("marketCap")
+            beta = info.get("beta")
+            datos.append((t,
+                          info.get("sector") or "Desconocido",
+                          info.get("industry") or "Desconocido",
+                          info.get("shortName") or t,
+                          float(cap) if cap is not None else None,
+                          float(beta) if beta is not None else None))
         except Exception:
-            datos.append((t, "Desconocido"))
+            datos.append((t, "Desconocido", "Desconocido", t, None, None))
     return datos
 
 comentar("La API de Yahoo Finance contiene el objeto 'info' para cada ticker, el cual incluye el atributo 'sector'. Este dato es fundamental como dimensión descriptiva, ya que actúa como clave foránea para relacionar las cotizaciones individuales de las empresas con el índice de sentimiento sectorial proporcionado en el CSV.", "Practica1_2.pdf (apartado Silver: limpiar, tipar y validar y Ej7)")
@@ -330,33 +400,27 @@ cada tabla.
 
 def procesar_silver_sentimiento(spark, ruta_origen, ruta_destino):
     df_origen = spark.read.format("delta").load(ruta_origen)
-    df_largo = df_origen.unpivot(["Fecha"], None, "Sector_ES", "Sentimiento_Str")
-    
-    df_limpio = (df_largo
-                 .withColumn("Sentimiento", F.regexp_replace("Sentimiento_Str", ",", ".").cast("double"))
-                 .withColumn("Fecha", F.to_date("Fecha", "dd/MM/yyyy"))
-                 .withColumn("Sector_ES", F.trim(F.col("Sector_ES")))
-                 .dropna(subset=["Sentimiento", "Fecha"])
-                 .dropDuplicates(["Fecha", "Sector_ES"])
-                 .drop("Sentimiento_Str"))
-    
-    mapeo_sectores = {
-        "Finanzas": "Financial Services",
-        "Energia": "Utilities",
-        "Tecnologia": "Technology",
-        "Turismo": "Industrials", 
-        "Inmobiliario": "Real Estate"
-    }
-    mapeo_expr = F.create_map([F.lit(x) for k, v in mapeo_sectores.items() for x in (k, v)])
-    df_final = df_limpio.withColumn("Sector", mapeo_expr[F.col("Sector_ES")]).drop("Sector_ES")
-    
+
+    df_final = (df_origen
+                .withColumn("Fecha", F.to_date("Fecha", "yyyy-MM-dd"))
+                .withColumn("Sector", F.initcap(F.trim(F.col("Sector"))))
+                .withColumn("Sentimiento", F.regexp_replace("Sentimiento", ",", ".").cast("double"))
+                .dropna(subset=["Fecha", "Sector", "Sentimiento"])
+                .dropDuplicates(["Fecha", "Sector"]))
+
+    # Comprobación: sectores que quedan tras normalizar
+    df_final.select("Sector").distinct().show(50, truncate=False)
+
     df_final.write.format("delta").mode("overwrite").save(ruta_destino)
     return df_final
 
 df_silver_sent = procesar_silver_sentimiento(spark_session, RUTA_BRONZE_SENT, RUTA_SILVER_SENT)
 print(f"Filas en Silver Sentimiento: {df_silver_sent.count()}")
-comentar("Se ha usado unpivot para pasar el CSV de un formato ancho a uno largo, normalizando las columnas. Se usó regexp_replace para corregir los decimales, to_date para la fecha y dropna/dropDuplicates para asegurar la calidad de la capa Silver.", "Practica1_2.pdf (apartado Unpivot y Ej8)")
 
+comentar("El CSV ya venía en formato largo, así que no hizo falta unpivot. Se convirtió Fecha a date, "
+         "Sentimiento a double (cambiando coma por punto por si acaso), se normalizó Sector con trim e "
+         "initcap para que coincida con los nombres de Yahoo Finance, y se eliminaron nulos y duplicados "
+         "por (Fecha, Sector).", "Practica1_2.pdf (apartado Silver: limpiar, tipar y validar y Ej8)")
 ##########################################################################################################
 
 print("Ej 9")
@@ -370,22 +434,20 @@ la información. Muestra la/s fila/s 5.
 def procesar_silver_ibex(spark, ruta_origen, ruta_destino):
     #limpieza eliminando duplicados y nulos
     df = (
-        spark.read.format("delta").load(ruta_origen).dropna(subset=["Close", "Ticker", "Fecha"]).dropDuplicates(["Ticket", "Fecha"])
+        spark.read.format("delta").load(ruta_origen).dropna(subset=["Close", "Ticker", "Fecha"]).dropDuplicates(["Ticker", "Fecha"])
     )
 
     df.write.format("delta").mode("overwrite").save(ruta_destino)
     return df
 
-def procesar_dimension_empresas(spark, ticket, ruta_bronze, ruta_silver):
+def procesar_dimension_empresas(spark, tickers, ruta_bronze, ruta_silver):
     #Limpieza de la dimension de las empresas
-    datos_empresas = [
-        ("BBVA.MC", "Financial services"), ("IBE.MC", "Utilits"), ("TEF.MC", "Comunication services")
-    ]
-    df_emp = spark.createDataFrame(datos_empresas, [("Ticker", "Sector")])
+    datos_empresas = obtener_sectores_yahoo(tickers)
+    df_emp = spark.createDataFrame(datos_empresas, ESQUEMA_EMPRESAS)
 
     #presistencia en bronze
     df_emp.write.mode("overwrite").parquet(ruta_bronze)
-    DeltaTable.convertToDelta(spark, f"parquet.'{ruta_bronze}'")
+    DeltaTable.convertToDelta(spark, f"parquet.`{ruta_bronze}`")
 
     #procesamiento y guardado en silver
     df_emp_silver = spark.read.format("delta").load(ruta_bronze).dropDuplicates(["Ticker"])
@@ -398,12 +460,27 @@ df_silver_ibex.show(5)
 df_silver_empresa = procesar_dimension_empresas(spark_session, TICKERS_IBEX, RUTA_BRONZE_EMP, RUTA_SILVER_EMP)
 df_silver_empresa.show(5)
 
+print("Filas bronze ibex:", spark_session.read.format("delta").load(RUTA_BRONZE_IBEX).count())
+print("Filas bronze sentimiento:", spark_session.read.format("delta").load(RUTA_BRONZE_SENT).count())
+print("Filas silver ibex:", df_silver_ibex.count())
+print("Filas silver sentimiento:", df_silver_sent.count())
+print("Filas silver empresas:", df_silver_empresa.count())
+
 ###################################################################################################################3
 
 print("Ej10")
 '''
 Integra todas las fuentes en la capa y guárdala en data/lake/gold
 '''
+def crear_dim_fecha(df_ibex):
+    # dimensión Fecha: un registro por día de cotización, con atributos para agrupar en Power BI
+    return (df_ibex.select("Fecha").distinct()
+            .withColumn("Anio", F.year("Fecha"))
+            .withColumn("Trimestre", F.quarter("Fecha"))
+            .withColumn("Mes", F.month("Fecha"))
+            .withColumn("Semana", F.weekofyear("Fecha"))
+            .withColumn("Dia_Semana", F.dayofweek("Fecha")))
+
 
 def integrar_capa_gold(spark, ruta_ibex, ruta_sentiminento, ruta_empresa):
     #une las dimensiones procesadas en la capa silver para generar la tabla
@@ -413,13 +490,14 @@ def integrar_capa_gold(spark, ruta_ibex, ruta_sentiminento, ruta_empresa):
 
     #construimos tabla fact con LEFT Joins
     df_fact = (
-        df_ibex.join(df_emp, on="Ticker", how="left").join(df_sent, on=["Sector", "Fecha"], how="left")
+        df_ibex.join(df_emp.select("Ticker", "Sector"), on="Ticker", how="left")
     )
 
     #guardamos la tabla de hechos y las tablas de dimensiones
     df_fact.write.format("delta").mode("overwrite").save(RUTA_GOLD_FACT)
     df_emp.write.format("delta").mode("overwrite").save(RUTA_GOLD_DIM_EMP)
     df_sent.write.format("delta").mode("overwrite").save(RUTA_GOLD_DIM_SENT)
+    crear_dim_fecha(df_ibex).write.format("delta").mode("overwrite").save(RUTA_GOLD_DIM_FECHA)
     return df_fact
 
 df_gold_fact = integrar_capa_gold(spark_session, RUTA_SILVER_IBEX, RUTA_SILVER_SENT, RUTA_SILVER_EMP)
@@ -442,15 +520,24 @@ def analisis_calidad_antijoin(spark, ruta_fact, ruta_sent):
     precios_sin_sentimiento = df_fact.join(df_sent, on=["Sector", "Fecha"], how="left_anti")
     sentimiento_sin_precios = df_sent.join(df_fact, on=["Sector", "Fecha"], how="left_anti")
     
+    print("Rango de fechas del sentimiento:")
+    df_sent.agg(F.min("Fecha"), F.max("Fecha")).show()
+    print("Rango de fechas de las cotizaciones:")
+    df_fact.agg(F.min("Fecha"), F.max("Fecha")).show()
+
     print(f"Cotizaciones sin métrica de sentimiento: {precios_sin_sentimiento.count()}")
+    precios_sin_sentimiento.select("Ticker", "Sector", "Fecha").show(5)
     print(f"Sentimiento sin empresas cotizando: {sentimiento_sin_precios.count()}")
+    sentimiento_sin_precios.show(5)
 
 analisis_calidad_antijoin(spark_session, RUTA_GOLD_FACT, RUTA_GOLD_DIM_SENT)
+
 comentar(
-    "El anti-join revela las filas huérfanas. Los precios sin sentimiento ocurren porque Yahoo cotiza días "
-    "que el experto no valoró, o hay sectores faltantes. El sentimiento sin precios ocurre en fines de semana/festivos "
-    "donde el índice de sentimiento existe pero la bolsa está cerrada. Se soluciona cruzando por 'left' en la fact table "
-    "y rellenando nulos (fillna) con el valor anterior usando funciones de ventana.",
+    "Los precios sin sentimiento son las cotizaciones posteriores a la última fecha del CSV del experto "
+    "(el MERGE del Ej4 trajo precios hasta hoy). El sentimiento sin precios se debe a que el CSV empieza en "
+    "2021 y los precios en octubre de 2024, y a que el sector Crypto no tiene ninguna empresa del IBEX. "
+    "No se rellenan los nulos: arrastrar el último valor inventaría un dato que el experto no emitió, "
+    "así que en Power BI esos días aparecen vacíos. Las filas sin cruzar se conservan gracias al LEFT JOIN.",
     "Practica1_2.pdf (apartado Anti-join left_anti)"
 )
 
@@ -493,20 +580,29 @@ guardar los datos (Cuanto más eficiente lo hagas, mejor funcionará la siguient
 práctica. Pregunta a tu profesor si tienes dudas una vez tengas el modelo).
 Justifícalo en UN párrafo en el pdf.
 '''
-
 def exportar_para_powerbi(spark, ruta_origen, ruta_exportacion):
     #esportar las tablas GOLD en formato parquet PowerBi
     df_hechos = spark.read.format("delta").load(os.path.join(ruta_origen, "fact_cotizaciones"))
-    df_hechos.write.mode("overwrite").parquet(os.patah.join(ruta_exportacion, "fact_cotizaciones"))
+    df_hechos.write.mode("overwrite").parquet(os.path.join(ruta_exportacion, "fact_cotizaciones"))
 
     df_emp = spark.read.format("delta").load(os.path.join(ruta_origen, "dim_empresas"))
     df_emp.write.mode("overwrite").parquet(os.path.join(ruta_exportacion, "dim_empresas"))
 
+    df_sent = spark.read.format("delta").load(os.path.join(ruta_origen, "dim_sentimiento"))
+    df_sent.write.mode("overwrite").parquet(os.path.join(ruta_exportacion, "dim_sentimiento"))
+
+    df_fecha = spark.read.format("delta").load(os.path.join(ruta_origen, "dim_fecha"))
+    df_fecha.write.mode("overwrite").parquet(os.path.join(ruta_exportacion, "dim_fecha"))
+
+
 exportar_para_powerbi(spark_session, RUTA_GOLD, RUTA_EXPORT_GOLD)
+
 comentar(
-    "Se exporta el modelo en formato Parquet manteniendo la estructura de estrella (una tabla Fact central de "
-    "alta dimensionalidad conectada a las dimensiones de empresa y sentimiento). Esta topología desnormalizada "
-    "reduce las uniones (JOINs) pesadas y permite que motores analíticos como Power BI interpreten las relaciones "
-    "orgánicamente, mejorando el rendimiento drásticamente.",
+    "Se exporta el modelo en estrella: una tabla de hechos central (cotización diaria por empresa, con el "
+    "sentimiento de su sector y las métricas calculadas) unida por Ticker y Fecha a las dimensiones empresa "
+    "(sector, industria, capitalización, beta) y fecha (año, trimestre, mes, semana). Las dimensiones "
+    "evitan repetir texto en cada fila del hecho y Power BI las usa directamente como filtros y ejes. "
+    "Se conserva además dim_sentimiento como consulta del índice completo del experto, incluida la parte "
+    "sin cotizaciones. Se exporta en Parquet por su lectura columnar.",
     "Practica1_2.pdf (apartado El modelo en estrella y Ej13)"
 )

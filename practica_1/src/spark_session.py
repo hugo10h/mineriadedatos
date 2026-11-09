@@ -43,5 +43,5 @@ def crear_spark_session(app_name="IBEX35"):
 
     # Añade los .jar de Delta (la 1ª vez los descarga de Maven: necesita internet)
     spark = configure_spark_with_delta_pip(builder).getOrCreate()
-    spark.sparkContext.setLogLevel("WARN")
+    spark.sparkContext.setLogLevel("ERROR")
     return spark
