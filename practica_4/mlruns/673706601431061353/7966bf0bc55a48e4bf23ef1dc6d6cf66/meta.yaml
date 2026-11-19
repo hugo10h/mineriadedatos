@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/hugom/OneDrive/Escritorio/MD/practica_4/mlruns/673706601431061353/7966bf0bc55a48e4bf23ef1dc6d6cf66/artifacts
+end_time: 1794944006230
+entry_point_name: ''
+experiment_id: '673706601431061353'
+lifecycle_stage: active
+run_id: 7966bf0bc55a48e4bf23ef1dc6d6cf66
+run_name: k=8
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1794944006139
+status: 3
+tags: []
+user_id: hugom

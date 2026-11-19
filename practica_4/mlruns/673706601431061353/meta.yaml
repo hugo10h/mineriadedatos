@@ -1,0 +1,9 @@
+artifact_location: file:///C:/Users/hugom/OneDrive/Escritorio/MD/practica_4/mlruns/673706601431061353
+creation_time: 1794943989932
+effective_trace_archival_retention: null
+experiment_id: '673706601431061353'
+last_update_time: 1794943989932
+lifecycle_stage: active
+name: kmeans_BBVA
+trace_location: null
+workspace: default
